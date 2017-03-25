@@ -1,5 +1,8 @@
 *.pyc
+*.jpg
 *.png
+*.gif
 *.pkl
+config.py
 /amzEnv
 /static

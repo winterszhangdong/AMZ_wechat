@@ -11,12 +11,14 @@ import shutil
 import time
 import itchat
 from itchat.content import *
+import hashlib
+import config
 
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
 msg_dict = {}
 
-#ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
-#为减少资源占用，此函数只在有新消息动态时调用
+# ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
+# 为减少资源占用，此函数只在有新消息动态时调用
 def ClearTimeOutMsg():
     if msg_dict.__len__() > 0:
         for msgid in list(msg_dict): #由于字典在遍历过程中不能删除元素，故使用此方法
@@ -31,14 +33,25 @@ def ClearTimeOutMsg():
                     print("要删除的文件：", item['msg_content'])
                     os.remove(item['msg_content'])
 
-#将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
-#没有注册note（通知类）消息，通知类消息一般为：红包 转账 消息撤回提醒等，不具有撤回功能
+# 获取保存图片的地址
+def getPicUrl(file_name):
+    m = hashlib.md5()
+    m.update(file_name + 'winters')
+    md5_code = m.hexdigest()
+    pic_url = config.SERVER + ':' + config.PORT + '/' + md5_code + '/' + file_name
+    print 'pic_url ------>', pic_url
+    return pic_url
+
+
+# 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
+# 没有注册note（通知类）消息，通知类消息一般为：红包 转账 消息撤回提醒等，不具有撤回功能
 @itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
                      isFriendChat=True, isGroupChat=True)
 def Revocation(msg):
     print 'receive message'
+
     mytime = time.localtime()  # 这儿获取的是本地时间
-    #获取用于展示给用户看的时间 2017/03/03 13:23:53
+    # 获取用于展示给用户看的时间 2017/03/03 13:23:53
     msg_time_touser = mytime.tm_year.__str__() \
                       + "/" + mytime.tm_mon.__str__() \
                       + "/" + mytime.tm_mday.__str__() \
@@ -48,7 +61,14 @@ def Revocation(msg):
 
     msg_id = msg['MsgId'] #消息ID
     msg_time = msg['CreateTime'] #消息时间
-    friendUserName = msg['FromUserName']
+    # friendUserName = msg['FromUserName']
+    # 判断是不是群消息，只有群消息有'ActualUserName'项目
+    # if msg.get('ActualUserName'):
+    #     friendUserName = msg['ActualUserName']
+    # else:
+    #     friendUserName = msg['FromUserName']
+
+    friendUserName = msg.get('ActualUserName', msg['FromUserName'])
     msg_from = itchat.search_friends(userName=friendUserName)['NickName'] #消息发送人昵称
     # 如果消息来自自己，则直接清理过期消息
     # if msg_from == u'Winters先生':
@@ -57,7 +77,7 @@ def Revocation(msg):
     msg_type = msg['Type'] #消息类型
     msg_content = None #根据消息类型不同，消息内容不同
     msg_url = None #分享类消息有url
-    #图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
+    # 图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
     if msg['Type'] == 'Text':
         msg_content = msg['Text']
     elif msg['Type'] == 'Picture':
@@ -87,12 +107,12 @@ def Revocation(msg):
     elif msg['Type'] == 'Friends':
         msg_content = msg['Text']
 
-    #更新字典
+    # 更新字典
     # {msg_id:(msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
     msg_dict.update(
         {msg_id: {"msg_from": msg_from, "msg_time": msg_time, "msg_time_touser": msg_time_touser, "msg_type": msg_type,
                   "msg_content": msg_content, "msg_url": msg_url}})
-    #清理字典
+    # 清理字典
     ClearTimeOutMsg()
 
 #收到note类消息，判断是不是撤回并进行相应操作
@@ -100,9 +120,9 @@ def Revocation(msg):
 def SaveMsg(msg):
     # print(msg)
     print msg['Text']
-    #创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
-    if not os.path.exists(".\\Revocation\\"):
-        os.mkdir(".\\Revocation\\")
+    # 创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
+    if not os.path.exists("./static/"):
+        os.mkdir("./static/")
 
     # if re.search(r"\<replacemsg\>\<\!\[CDATA\[.*撤回了一条消息\]\]\>\<\/replacemsg\>", msg['Content']) != None:
     if re.search(u".*撤回了一条消息", msg['Text']) != None:
@@ -114,19 +134,21 @@ def SaveMsg(msg):
         old_msg = msg_dict.get(old_msg_id, {})
         #print(old_msg_id, old_msg)
         msg_send = u"您的好友：" \
-                   + old_msg.get('msg_from', None) \
-                   + u"  在 [" + old_msg.get('msg_time_touser', None) \
-                   + u"], 撤回了一条 ["+old_msg['msg_type']+u"] 消息, 内容如下:" \
-                   + old_msg.get('msg_content', None)
+                   + old_msg.get('msg_from', '') \
+                   + u"  在 [" + old_msg.get('msg_time_touser', '') \
+                   + u"], 撤回了一条 ["+old_msg['msg_type'] + u"] 消息, 内容如下:" \
+                   + old_msg.get('msg_content', '')
         if old_msg['msg_type'] == "Sharing":
-            msg_send += u", 链接: " \
-                        + old_msg.get('msg_url', None)
-        elif old_msg['msg_type'] == 'Picture' \
-                or old_msg['msg_type'] == 'Recording' \
+            msg_send += u", 链接: " + old_msg.get('msg_url', '')
+        elif old_msg['msg_type'] == 'Picture':
+            shutil.move(old_msg['msg_content'], r"./static/")
+            pic_url = getPicUrl(old_msg['msg_content'])
+            msg_send += ' ' + pic_url
+        elif old_msg['msg_type'] == 'Recording' \
                 or old_msg['msg_type'] == 'Video' \
                 or old_msg['msg_type'] == 'Attachment':
             msg_send += u", 存储在当前目录下Revocation文件夹中"
-            shutil.move(old_msg['msg_content'], r".\\Revocation\\")
+            shutil.move(old_msg['msg_content'], r"./static/")
 
         print 'msg_send: ---------->', msg_send
         itchat.send(msg_send, toUserName='filehelper') #将撤回消息的通知以及细节发送到文件助手
@@ -135,9 +157,6 @@ def SaveMsg(msg):
         ClearTimeOutMsg()
 
 if __name__ == '__main__':
-    # try:
-    #     itchat.auto_login(hotReload=True, picDir='./static/QR.png')
-    # except Exception, e:
-    #     print e
+    # 启动程序，并且设置二维码的保存路径
     itchat.auto_login(hotReload=True, enableCmdQR=True, picDir='./static/QR.png')
     itchat.run()
