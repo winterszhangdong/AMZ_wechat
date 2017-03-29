@@ -42,14 +42,14 @@ def getPicUrl(file_name):
     print 'pic_url ------>', pic_url
     return pic_url
 
+# 从msg中获取位置信息
+# def getLocation(msg):
+#     x, y, location = re.search("<location x=\"(.*?)\" y=\"(.*?)\".*label=\"(.*?)\".*",
+#                                msg['OriContent']).group(1, 2, 3)
+#     return x.__str__(), y.__str__()
 
-# 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
-# 没有注册note（通知类）消息，通知类消息一般为：红包 转账 消息撤回提醒等，不具有撤回功能
-@itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
-                     isFriendChat=True, isGroupChat=True)
-def Revocation(msg):
-    print 'receive message'
 
+def getSavingMsg(msg, msgType):
     mytime = time.localtime()  # 这儿获取的是本地时间
     # 获取用于展示给用户看的时间 2017/03/03 13:23:53
     msg_time_touser = mytime.tm_year.__str__() \
@@ -58,25 +58,11 @@ def Revocation(msg):
                       + " " + mytime.tm_hour.__str__() \
                       + ":" + mytime.tm_min.__str__() \
                       + ":" + mytime.tm_sec.__str__()
+    msg_time = msg['CreateTime']  # 消息时间
 
-    msg_id = msg['MsgId'] #消息ID
-    msg_time = msg['CreateTime'] #消息时间
-    # friendUserName = msg['FromUserName']
-    # 判断是不是群消息，只有群消息有'ActualUserName'项目
-    # if msg.get('ActualUserName'):
-    #     friendUserName = msg['ActualUserName']
-    # else:
-    #     friendUserName = msg['FromUserName']
-
-    friendUserName = msg.get('ActualUserName', msg['FromUserName'])
-    msg_from = itchat.search_friends(userName=friendUserName)['NickName'] #消息发送人昵称
-    # 如果消息来自自己，则直接清理过期消息
-    # if msg_from == u'Winters先生':
-    #     return
-
-    msg_type = msg['Type'] #消息类型
-    msg_content = None #根据消息类型不同，消息内容不同
-    msg_url = None #分享类消息有url
+    msg_type = msg['Type']  # 消息类型
+    msg_content = None  # 根据消息类型不同，消息内容不同
+    msg_url = None  # 分享类消息有url
     # 图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
     if msg['Type'] == 'Text':
         msg_content = msg['Text']
@@ -107,17 +93,70 @@ def Revocation(msg):
     elif msg['Type'] == 'Friends':
         msg_content = msg['Text']
 
+    if msgType == 'friendChat':
+        friendUserName = msg['FromUserName']
+        msg_from = itchat.search_friends(userName=friendUserName)['NickName']  # 消息发送人昵称
+        saving_msg = {
+            "msg_from": msg_from,
+            "msg_time": msg_time,
+            "msg_time_touser": msg_time_touser,
+            "msg_type": msg_type,
+            "msg_content": msg_content,
+            "msg_url": msg_url
+        }
+    elif msgType == 'groupChat':
+        # friendUserName = msg['ActualUserName']
+        # msg_from = itchat.search_friends(userName=friendUserName)['NickName']  # 消息发送人昵称
+        msg_from = msg.get('ActualNickName', u'Winters先生')
+        groupName = msg['FromUserName']
+        msg_group = itchat.search_chatrooms(userName=groupName).get('NickName', u'未保存到通讯录的群')
+        saving_msg = {
+            "msg_group": msg_group,
+            "msg_from": msg_from,
+            "msg_time": msg_time,
+            "msg_time_touser": msg_time_touser,
+            "msg_type": msg_type,
+            "msg_content": msg_content,
+            "msg_url": msg_url
+        }
+    else:
+        pass
+
+    return saving_msg
+
+
+# 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
+# 没有注册note（通知类）消息，通知类消息一般为：红包 转账 消息撤回提醒等，不具有撤回功能
+@itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
+                     isFriendChat=True)
+def SaveFriendsMsg(msg):
+    print 'receive message'
+    msg_id = msg['MsgId']  # 消息ID
+
+    saving_msg = getSavingMsg(msg, 'friendChat')
     # 更新字典
     # {msg_id:(msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
-    msg_dict.update(
-        {msg_id: {"msg_from": msg_from, "msg_time": msg_time, "msg_time_touser": msg_time_touser, "msg_type": msg_type,
-                  "msg_content": msg_content, "msg_url": msg_url}})
+    msg_dict.update({msg_id: saving_msg})
+    # 清理字典
+    ClearTimeOutMsg()
+
+#
+@itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
+                     isGroupChat=True)
+def SaveGroupsMsg(msg):
+    print 'receive message'
+    msg_id = msg['MsgId']  # 消息ID
+
+    saving_msg = getSavingMsg(msg, 'groupChat')
+    # 更新字典
+    # {msg_id:(msg_group, msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
+    msg_dict.update({msg_id: saving_msg})
     # 清理字典
     ClearTimeOutMsg()
 
 #收到note类消息，判断是不是撤回并进行相应操作
 @itchat.msg_register([NOTE], isFriendChat=True, isGroupChat=True)
-def SaveMsg(msg):
+def SendRecallMsg(msg):
     # print(msg)
     print msg['Text']
     # 创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
@@ -133,10 +172,15 @@ def SaveMsg(msg):
 
         old_msg = msg_dict.get(old_msg_id, {})
         #print(old_msg_id, old_msg)
+        if old_msg.get('msg_group'):
+            group_text = u'从群【' + old_msg['msg_group'] + u'】中'
+        else:
+            group_text = u''
+
         msg_send = u"您的好友：" \
                    + old_msg.get('msg_from', '') \
                    + u"  在 [" + old_msg.get('msg_time_touser', '') \
-                   + u"], 撤回了一条 ["+old_msg['msg_type'] + u"] 消息, 内容如下:" \
+                   + u"], " + group_text + u"撤回了一条 ["+old_msg['msg_type'] + u"] 消息, 内容如下:" \
                    + old_msg.get('msg_content', '')
         if old_msg['msg_type'] == "Sharing":
             msg_send += u", 链接: " + old_msg.get('msg_url', '')
