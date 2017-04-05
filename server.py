@@ -18,7 +18,7 @@ def get_pic(auth_code=None, filename=None):
     m.update(filename + config.SALT)
     md5_code = m.hexdigest()
     if auth_code == md5_code:
-        return render_template('chat_pic.html', pic_name=filename)
+        return render_template('chat_file.html', file_name=filename)
 
 
 if __name__ == '__main__':
