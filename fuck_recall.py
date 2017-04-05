@@ -117,22 +117,28 @@ def SendRecalledMsg(old_msg):
     if not old_msg:
         raise Exception('撤回的消息不在本地暂存的消息列表中!')
     elif old_msg.get('msg_group'):
-        group_text = u'从群【' + old_msg['msg_group'] + u'】中'
+        group_name = u'#' + old_msg['msg_group'] + u'  '
     else:
-        group_text = u''
+        group_name = u''
 
-    msg_send = (u'您的好友：'
-               + old_msg.get('msg_from', '')
-               + u'  在 [' + old_msg.get('msg_time_touser', '')
-               + u'], ' + group_text + u'撤回了一条 [' + old_msg['msg_type'] + u'] 消息, 内容如下:'
-               + old_msg.get('msg_content', ''))
+    # msg_send = (u'您的好友：'
+    #            + old_msg.get('msg_from', '')
+    #            + u'  在 [' + old_msg.get('msg_time_touser', '')
+    #            + u'], ' + group_text + u'撤回了一条 [' + old_msg['msg_type'] + u'] 消息, 内容如下:'
+    #            + old_msg.get('msg_content', ''))
+
+    msg_send = ('新的撤回消息!\n' +
+                '撤回人：' + group_name + old_msg.get('msg_from', '') + '\n' +
+                '撤回时间：' + old_msg.get('msg_time_touser', '') + '\n' +
+                '消息类型：' + old_msg.get('msg_type', '') + '\n' +
+                '消息内容：' + old_msg.get('msg_content',''))
 
     if old_msg['msg_type'] == "Sharing":
-        msg_send += u', 链接: ' + old_msg.get('msg_url', '')
-    elif old_msg['msg_tyep'] in ['Recording', 'Video', 'Attachment', 'Picture']:
+        msg_send += '\n链接：' + old_msg.get('msg_url', '')
+    elif old_msg['msg_type'] in ['Recording', 'Video', 'Attachment', 'Picture']:
         shutil.move(old_msg['msg_content'], r"./static/")
         file_url = getSavedFileUrl(old_msg['msg_content'])
-        msg_send += u' 文件地址: ' + file_url
+        msg_send += '\n文件地址：' + file_url
 
     print 'msg_send: ---------->', msg_send
     itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
