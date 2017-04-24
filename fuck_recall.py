@@ -11,12 +11,14 @@ import shutil
 import time
 import itchat
 from itchat.content import *
-import hashlib
-import config
 
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
 msg_dict = {}
+type_dict = {'Recording': '@fil',
+             'Attachment': '@fil',
+             'Video': '@vid',
+             'Picture': '@img'}
 
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
@@ -32,16 +34,6 @@ def ClearTimeOutMsg():
             if item['msg_type'] in ['Picture', 'Recording', 'Video', 'Attachment']:
                 print "要删除的文件：", item['msg_content']
                 os.remove(item['msg_content'])
-
-
-# 获取保存文件的地址
-def getSavedFileUrl(file_name):
-    m = hashlib.md5()
-    m.update(file_name + 'winters')
-    md5_code = m.hexdigest()
-    pic_url = config.SERVER + ':' + config.PORT + '/' + md5_code + '/' + file_name
-    print 'pic_url ------>', pic_url
-    return pic_url
 
 
 # 从接受的信息中获取必要的字段，处理后返回信息字典
@@ -84,6 +76,7 @@ def getSavingMsg(msg, chatType):
         msg_content = msg['Text']
 
 
+    # 缓存在本地的消息
     saving_msg = {
         "msg_time": msg_time,
         "msg_time_touser": msg_time_touser,
@@ -121,27 +114,30 @@ def SendRecalledMsg(old_msg):
     else:
         group_name = u''
 
-    # msg_send = (u'您的好友：'
-    #            + old_msg.get('msg_from', '')
-    #            + u'  在 [' + old_msg.get('msg_time_touser', '')
-    #            + u'], ' + group_text + u'撤回了一条 [' + old_msg['msg_type'] + u'] 消息, 内容如下:'
-    #            + old_msg.get('msg_content', ''))
-
     msg_send = ('新的撤回消息!\n' +
                 '撤回人：' + group_name + old_msg.get('msg_from', '') + '\n' +
                 '撤回时间：' + old_msg.get('msg_time_touser', '') + '\n' +
                 '消息类型：' + old_msg.get('msg_type', '') + '\n' +
                 '消息内容：' + old_msg.get('msg_content',''))
 
+    # 撤回消息是分享链接
     if old_msg['msg_type'] == "Sharing":
         msg_send += '\n链接：' + old_msg.get('msg_url', '')
+        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
+    # 撤回消息是可保存的文件类型
     elif old_msg['msg_type'] in ['Recording', 'Video', 'Attachment', 'Picture']:
-        shutil.move(old_msg['msg_content'], r"./static/")
-        file_url = getSavedFileUrl(old_msg['msg_content'])
-        msg_send += '\n文件地址：' + file_url
+        msg_send += '\n撤回文件如下⬇️'
+        file_name = old_msg['msg_content']
+        shutil.move(file_name, r"./recalled_file/")
+        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
+        itchat.send(msg=type_dict[old_msg['msg_type']]+'@recalled_file/'+file_name, toUserName='filehelper')
+        # file_url = getSavedFileUrl(old_msg['msg_content'])
+        # msg_send += '\n文件地址：' + file_url
+    # 撤回消息是普通文本消息
+    else:
+        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
 
     print 'msg_send: ---------->', msg_send
-    itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
 
 
 # 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
@@ -157,7 +153,7 @@ def SaveFriendsMsg(msg):
     # 更新字典
     # {msg_id:(msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
     msg_dict.update({msg_id: saving_msg})
-    # 清理字典
+    # 清理缓存消息列表
     ClearTimeOutMsg()
 
 
@@ -172,7 +168,7 @@ def SaveGroupsMsg(msg):
     # 更新字典
     # {msg_id:(msg_group,msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
     msg_dict.update({msg_id: saving_msg})
-    # 清理字典
+    # 清理缓存消息列表
     ClearTimeOutMsg()
 
 
