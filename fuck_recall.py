@@ -19,6 +19,9 @@ type_dict = {'Recording': '@fil',
              'Attachment': '@fil',
              'Video': '@vid',
              'Picture': '@img'}
+download_folder = './cache/'
+static_folder = './static/'
+recalled_file_folder = './recalled_file/'
 
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
@@ -50,7 +53,7 @@ def getSavingMsg(msg, chatType):
         msg_content = msg['Text']
     elif msg['Type'] == 'Picture':
         msg_content = msg['FileName']
-        msg['Text'](msg['FileName'])
+        msg['Text'](download_folder+msg['FileName'])
     elif msg['Type'] == 'Card':
         msg_content = msg['RecommendInfo']['NickName'] + u' 的名片'
     elif msg['Type'] == 'Map':
@@ -65,13 +68,13 @@ def getSavingMsg(msg, chatType):
         msg_url = msg['Url']
     elif msg['Type'] == 'Recording':
         msg_content = msg['FileName']
-        msg['Text'](msg['FileName'])
+        msg['Text'](download_folder+msg['FileName'])
     elif msg['Type'] == 'Attachment':
         msg_content = u'' + msg['FileName']
-        msg['Text'](msg['FileName'])
+        msg['Text'](download_folder+msg['FileName'])
     elif msg['Type'] == 'Video':
         msg_content = msg['FileName']
-        msg['Text'](msg['FileName'])
+        msg['Text'](download_folder+msg['FileName'])
     elif msg['Type'] == 'Friends':
         msg_content = msg['Text']
 
@@ -128,7 +131,7 @@ def SendRecalledMsg(old_msg):
     elif old_msg['msg_type'] in ['Recording', 'Video', 'Attachment', 'Picture']:
         msg_send += '\n撤回文件如下⬇️'
         file_name = old_msg['msg_content']
-        shutil.move(file_name, r"./recalled_file/")
+        shutil.move(download_folder+file_name, recalled_file_folder)
         itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
         itchat.send(msg=type_dict[old_msg['msg_type']]+'@recalled_file/'+file_name, toUserName='filehelper')
         # file_url = getSavedFileUrl(old_msg['msg_content'])
@@ -178,8 +181,8 @@ def RecalledMsg(msg):
     # print(msg)
     print msg['Text']
     # 创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
-    if not os.path.exists("./static/"):
-        os.mkdir("./static/")
+    if not os.path.exists(download_folder):
+        os.mkdir(download_folder)
 
     # if re.search(r"\<replacemsg\>\<\!\[CDATA\[.*撤回了一条消息\]\]\>\<\/replacemsg\>", msg['Content']) != None:
     if re.search(u'.*撤回了一条消息', msg['Text']) is not None:
@@ -197,5 +200,5 @@ def RecalledMsg(msg):
 
 if __name__ == '__main__':
     # 启动程序，并且设置二维码的保存路径
-    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir='./static/QR.png')
+    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir=static_folder+'aaa.png')
     itchat.run()
