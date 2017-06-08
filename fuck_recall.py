@@ -15,6 +15,7 @@ from itchat.content import *
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
 msg_dict = {}
+uid = None
 type_dict = {'Recording': '@fil',
              'Attachment': '@fil',
              'Video': '@vid',
@@ -22,6 +23,7 @@ type_dict = {'Recording': '@fil',
 download_folder = './cache/'
 static_folder = './static/'
 recalled_file_folder = './recalled_file/'
+
 
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
@@ -197,6 +199,15 @@ def RecalledMsg(msg):
         SendRecalledMsg(old_msg)
         msg_dict.pop(old_msg_id)
         ClearTimeOutMsg()
+
+
+def run(identifier):
+    # 启动程序，并且设置二维码的保存路径
+    qrDir = static_folder + identifier + '.jpg'
+    statusStorageDir = static_folder + identifier + '.pkl'
+    itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
+    itchat.run()
+
 
 if __name__ == '__main__':
     # 启动程序，并且设置二维码的保存路径
