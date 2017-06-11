@@ -15,15 +15,16 @@ from itchat.content import *
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
 msg_dict = {}
-uid = None
 type_dict = {'Recording': '@fil',
              'Attachment': '@fil',
              'Video': '@vid',
              'Picture': '@img'}
 download_folder = './cache/'
-static_folder = './static/'
+qr_folder = './static/qr/'
 recalled_file_folder = './recalled_file/'
+status_storage_folder = './statusStorage/'
 
+identifier = None
 
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
@@ -40,6 +41,10 @@ def ClearTimeOutMsg():
                 print "要删除的文件：", item['msg_content']
                 os.remove(item['msg_content'])
 
+def getDownloadFilePath(filename):
+    global identifier
+
+    return download_folder + identifier + '_' + filename
 
 # 从接受的信息中获取必要的字段，处理后返回信息字典
 def getSavingMsg(msg, chatType):
@@ -55,7 +60,7 @@ def getSavingMsg(msg, chatType):
         msg_content = msg['Text']
     elif msg['Type'] == 'Picture':
         msg_content = msg['FileName']
-        msg['Text'](download_folder+msg['FileName'])
+        msg['Text'](getDownloadFilePath(msg['FileName']))
     elif msg['Type'] == 'Card':
         msg_content = msg['RecommendInfo']['NickName'] + u' 的名片'
     elif msg['Type'] == 'Map':
@@ -70,13 +75,13 @@ def getSavingMsg(msg, chatType):
         msg_url = msg['Url']
     elif msg['Type'] == 'Recording':
         msg_content = msg['FileName']
-        msg['Text'](download_folder+msg['FileName'])
+        msg['Text'](getDownloadFilePath(msg['FileName']))
     elif msg['Type'] == 'Attachment':
-        msg_content = u'' + msg['FileName']
-        msg['Text'](download_folder+msg['FileName'])
+        msg_content = '' + msg['FileName']
+        msg['Text'](getDownloadFilePath(''+msg['Filename']))
     elif msg['Type'] == 'Video':
         msg_content = msg['FileName']
-        msg['Text'](download_folder+msg['FileName'])
+        msg['Text'](getDownloadFilePath(msg['Filename']))
     elif msg['Type'] == 'Friends':
         msg_content = msg['Text']
 
@@ -111,6 +116,8 @@ def getSavingMsg(msg, chatType):
 # 将已撤回的消息发给文件传输助手
 def SendRecalledMsg(old_msg):
     # print(old_msg_id, old_msg)
+    global identifier
+
     # 如果是群消息
     if not old_msg:
         raise Exception('撤回的消息不在本地暂存的消息列表中!')
@@ -133,9 +140,10 @@ def SendRecalledMsg(old_msg):
     elif old_msg['msg_type'] in ['Recording', 'Video', 'Attachment', 'Picture']:
         msg_send += '\n撤回文件如下⬇️'
         file_name = old_msg['msg_content']
-        shutil.move(download_folder+file_name, recalled_file_folder)
+        shutil.move(getDownloadFilePath(file_name), recalled_file_folder)
         itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
-        itchat.send(msg=type_dict[old_msg['msg_type']]+'@recalled_file/'+file_name, toUserName='filehelper')
+        msg_file = type_dict[old_msg['msg_type']] + '@recalled_file/' + identifier + '_' + file_name
+        itchat.send(msg=msg_file, toUserName='filehelper')
         # file_url = getSavedFileUrl(old_msg['msg_content'])
         # msg_send += '\n文件地址：' + file_url
     # 撤回消息是普通文本消息
@@ -201,15 +209,21 @@ def RecalledMsg(msg):
         ClearTimeOutMsg()
 
 
-def run(identifier):
+def run(username):
+    global identifier
+
+    identifier = username
     # 启动程序，并且设置二维码的保存路径
-    qrDir = static_folder + identifier + '.jpg'
-    statusStorageDir = static_folder + identifier + '.pkl'
-    itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
-    itchat.run()
+    qrDir = qr_folder + identifier + '.jpg'
+    statusStorageDir = status_storage_folder + identifier + '.pkl'
+    # print 'qrDir ------> ', qrDir
+    pid = os.fork()
+    if pid == 0:
+        itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
+        itchat.run()
 
 
 if __name__ == '__main__':
     # 启动程序，并且设置二维码的保存路径
-    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir=static_folder+'aaa.png')
+    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir=qr_folder+'aaa.png')
     itchat.run()
