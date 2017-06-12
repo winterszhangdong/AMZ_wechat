@@ -9,7 +9,7 @@ import fuck_recall
 app = Flask(__name__)
 
 
-qr_folder = './static/qr/'
+qr_folder = config.qr_folder
 
 # 可以在线扫描二维码
 # @app.route('/qr')

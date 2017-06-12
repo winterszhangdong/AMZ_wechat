@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 
 import sys
+
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
@@ -11,6 +12,9 @@ import shutil
 import time
 import itchat
 from itchat.content import *
+import logging
+import logging.config
+import config
 
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
@@ -19,12 +23,18 @@ type_dict = {'Recording': '@fil',
              'Attachment': '@fil',
              'Video': '@vid',
              'Picture': '@img'}
-download_folder = './cache/'
-qr_folder = './static/qr/'
-recalled_file_folder = './recalled_file/'
-status_storage_folder = './statusStorage/'
+download_folder = config.download_folder
+qr_folder = config.qr_folder
+recalled_file_folder = config.recalled_file_folder
+status_storage_folder = config.status_storage_folder
 
 identifier = None
+
+# log配置文件
+logging.config.fileConfig('logging.conf')
+# 创建logger
+logger = logging.getLogger('wechatLogger')
+
 
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
@@ -32,19 +42,28 @@ def ClearTimeOutMsg():
     if not len(msg_dict):
         return
 
-    for msgid in list(msg_dict): #由于字典在遍历过程中不能删除元素，故使用此方法
-        if time.time() - msg_dict.get(msgid, None)["msg_time"] > 130.0: #超时两分钟
+    for msgid in list(msg_dict):  # 由于字典在遍历过程中不能删除元素，故使用此方法
+        if time.time() - msg_dict.get(msgid, None)["msg_time"] > 180.0:  # 超时三分钟
             item = msg_dict.pop(msgid)
-            #print("超时的消息：", item['msg_content'])
-            #可下载类消息，并删除相关文件
-            if item['msg_type'] in ['Picture', 'Recording', 'Video', 'Attachment']:
-                print "要删除的文件：", item['msg_content']
+            # print("超时的消息：", item['msg_content'])
+            # 可下载类消息，并删除相关文件
+            file_path = getDownloadFilePath(item['msg_content'])
+            ifDel = (item['msg_type'] in ['Picture', 'Recording', 'Video', 'Attachment']) \
+                    and os.path.exists(file_path)
+            if ifDel:
+                # print "要删除的文件：", item['msg_content']
+                logger.debug('要删除的文件：'+item['msg_content'])
                 os.remove(item['msg_content'])
+            else:
+                # print '要删除的文件不存在：', item['msg_content']
+                logger.debug('要删除的文件不存在：'+item['msg_content'])
+
 
 def getDownloadFilePath(filename):
     global identifier
 
     return download_folder + identifier + '_' + filename
+
 
 # 从接受的信息中获取必要的字段，处理后返回信息字典
 def getSavingMsg(msg, chatType):
@@ -78,13 +97,12 @@ def getSavingMsg(msg, chatType):
         msg['Text'](getDownloadFilePath(msg['FileName']))
     elif msg['Type'] == 'Attachment':
         msg_content = '' + msg['FileName']
-        msg['Text'](getDownloadFilePath(''+msg['Filename']))
+        msg['Text'](getDownloadFilePath('' + msg['Filename']))
     elif msg['Type'] == 'Video':
         msg_content = msg['FileName']
         msg['Text'](getDownloadFilePath(msg['Filename']))
     elif msg['Type'] == 'Friends':
         msg_content = msg['Text']
-
 
     # 缓存在本地的消息
     saving_msg = {
@@ -130,7 +148,7 @@ def SendRecalledMsg(old_msg):
                 '撤回人：' + group_name + old_msg.get('msg_from', '') + '\n' +
                 '撤回时间：' + old_msg.get('msg_time_touser', '') + '\n' +
                 '消息类型：' + old_msg.get('msg_type', '') + '\n' +
-                '消息内容：' + old_msg.get('msg_content',''))
+                '消息内容：' + old_msg.get('msg_content', ''))
 
     # 撤回消息是分享链接
     if old_msg['msg_type'] == "Sharing":
@@ -150,7 +168,8 @@ def SendRecalledMsg(old_msg):
     else:
         itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
 
-    print 'msg_send: ---------->', msg_send
+    # print 'msg_send: ---------->', msg_send
+    logger.debug('msg_send: ---------->'+msg_send)
 
 
 # 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
@@ -159,7 +178,7 @@ def SendRecalledMsg(old_msg):
 @itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
                      isFriendChat=True)
 def SaveFriendsMsg(msg):
-    print 'received message!'
+    # print 'received message!'
     msg_id = msg['MsgId']  # 消息ID
 
     saving_msg = getSavingMsg(msg, 'friendChat')
@@ -174,7 +193,7 @@ def SaveFriendsMsg(msg):
 @itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
                      isGroupChat=True)
 def SaveGroupsMsg(msg):
-    print 'received message!'
+    # print 'received message!'
     msg_id = msg['MsgId']  # 消息ID
 
     saving_msg = getSavingMsg(msg, 'groupChat')
@@ -189,7 +208,8 @@ def SaveGroupsMsg(msg):
 @itchat.msg_register([NOTE], isFriendChat=True, isGroupChat=True)
 def RecalledMsg(msg):
     # print(msg)
-    print msg['Text']
+    # print msg['Text']
+    logger.debug(msg['Text'])
     # 创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
     if not os.path.exists(download_folder):
         os.mkdir(download_folder)
@@ -225,5 +245,5 @@ def run(username):
 
 if __name__ == '__main__':
     # 启动程序，并且设置二维码的保存路径
-    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir=qr_folder+'aaa.png')
+    itchat.auto_login(hotReload=True, enableCmdQR=True, picDir=qr_folder + 'aaa.png')
     itchat.run()
