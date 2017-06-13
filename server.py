@@ -6,6 +6,7 @@ import os
 import time
 import config
 import fuck_recall
+import SqliteDB
 app = Flask(__name__)
 
 
@@ -31,6 +32,12 @@ def fuck_recall_login():
         return render_template('signin.html')
     elif request.method == 'POST':
         username = request.form['username']
+        # userSql = "SELECT * FROM USER WHERE USERNAME = " + username
+        # sqlite = SqliteDB.SqliteDB()
+        # conn = sqlite.connect('userinfo.db')
+        # cursor = conn.execute(userSql)
+        # if not cursor.fetchone():
+        #     pass
         qr_dir = qr_folder + username + '.jpg'
         fuck_recall.run(username)
         while(not os.path.exists(qr_dir)):

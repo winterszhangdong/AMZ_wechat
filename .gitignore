@@ -2,7 +2,14 @@
 *.jpg
 *.png
 *.gif
+*.mp3
+*.mp4
 *.pkl
+*.db
+*.log
+test.py
 config.py
 /amzEnv
-/static
+/cache
+/sataic/qr
+/statusStorage

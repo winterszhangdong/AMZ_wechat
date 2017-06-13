@@ -12,7 +12,6 @@ import shutil
 import time
 import itchat
 from itchat.content import *
-import logging
 import logging.config
 import config
 
@@ -36,33 +35,32 @@ logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('wechatLogger')
 
 
+def getDownloadFilePath(filename):
+    global identifier
+
+    return download_folder + identifier + '_' + filename
+
+
 # ClearTimeOutMsg用于清理消息字典，把超时消息清理掉
 # 为减少资源占用，此函数只在有新消息动态时调用
 def ClearTimeOutMsg():
     if not len(msg_dict):
         return
 
-    for msgid in list(msg_dict):  # 由于字典在遍历过程中不能删除元素，故使用此方法
+    for msgid in list(msg_dict):
         if time.time() - msg_dict.get(msgid, None)["msg_time"] > 180.0:  # 超时三分钟
             item = msg_dict.pop(msgid)
             # print("超时的消息：", item['msg_content'])
             # 可下载类消息，并删除相关文件
-            file_path = getDownloadFilePath(item['msg_content'])
-            ifDel = (item['msg_type'] in ['Picture', 'Recording', 'Video', 'Attachment']) \
-                    and os.path.exists(file_path)
-            if ifDel:
-                # print "要删除的文件：", item['msg_content']
-                logger.debug('要删除的文件：'+item['msg_content'])
-                os.remove(item['msg_content'])
-            else:
-                # print '要删除的文件不存在：', item['msg_content']
-                logger.debug('要删除的文件不存在：'+item['msg_content'])
-
-
-def getDownloadFilePath(filename):
-    global identifier
-
-    return download_folder + identifier + '_' + filename
+            if item['msg_type'] in ['Picture', 'Recording', 'Video', 'Attachment']:
+                filePath = getDownloadFilePath(item['msg_content'])
+                if os.path.exists(filePath):
+                    # print "要删除的文件：", item['msg_content']
+                    logger.debug('要删除的文件：' + filePath)
+                    os.remove(item['msg_content'])
+                else:
+                    # print '要删除的文件不存在：', item['msg_content']
+                    logger.debug('要删除的文件不存在：' + filePath)
 
 
 # 从接受的信息中获取必要的字段，处理后返回信息字典
@@ -169,7 +167,7 @@ def SendRecalledMsg(old_msg):
         itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
 
     # print 'msg_send: ---------->', msg_send
-    logger.debug('msg_send: ---------->'+msg_send)
+    logger.debug('msg_send: ---------->' + msg_send)
 
 
 # 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
