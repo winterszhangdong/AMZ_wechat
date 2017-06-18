@@ -14,6 +14,7 @@ import itchat
 from itchat.content import *
 import logging.config
 import config
+import sqlite3
 
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
@@ -26,6 +27,7 @@ download_folder = config.download_folder
 qr_folder = config.qr_folder
 recalled_file_folder = config.recalled_file_folder
 status_storage_folder = config.status_storage_folder
+pid_file = config.pid_file
 
 identifier = None
 
@@ -34,6 +36,16 @@ logging.config.fileConfig('logging.conf')
 # 创建logger
 logger = logging.getLogger('wechatLogger')
 
+
+def pid_logger(pid, mode='a'):
+    pid = str(pid)
+    if os.path.exists(pid_file):
+        logger.info('追加pid：'+pid)
+    else:
+        logger.info('pid.txt文件不存在，创建并追加pid：'+pid)
+
+    with open('./pid.txt', mode) as f:
+        f.write(pid+'\n')
 
 def getDownloadFilePath(filename):
     global identifier
@@ -238,7 +250,18 @@ def run(username):
     pid = os.fork()
     if pid == 0:
         itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
+        # itchat.auto_login(enableCmdQR=False, picDir=qrDir)
+        isLogin = itchat.check_login()
+        if isLogin:
+            selSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (1, username)
+            conn = sqlite3.connect('user_info.db')
+            conn.execute(selSql)
+            conn.commit()
         itchat.run()
+    else:
+        pid_logger(pid, 'a')
+
+    return pid
 
 
 if __name__ == '__main__':

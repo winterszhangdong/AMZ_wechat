@@ -7,9 +7,12 @@
 *.pkl
 *.db
 *.log
+*.sh
+*.txt
 test.py
 config.py
 /amzEnv
 /cache
 /sataic/qr
 /statusStorage
+/tools/
