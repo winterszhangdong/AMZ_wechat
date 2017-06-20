@@ -37,6 +37,7 @@ logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('wechatLogger')
 
 
+# 记录正在运行进程的pid
 def pid_logger(pid, mode='a'):
     pid = str(pid)
     if os.path.exists(pid_file):
@@ -47,6 +48,7 @@ def pid_logger(pid, mode='a'):
     with open('./pid.txt', mode) as f:
         f.write(pid+'\n')
 
+# 获取下载文件的文件路径
 def getDownloadFilePath(filename):
     global identifier
 
@@ -248,16 +250,33 @@ def run(username):
     statusStorageDir = status_storage_folder + identifier + '.pkl'
     # print 'qrDir ------> ', qrDir
     pid = os.fork()
+    # 如果是子进程
     if pid == 0:
-        itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
         # itchat.auto_login(enableCmdQR=False, picDir=qrDir)
+        itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
+        # 用户是否登陆
         isLogin = itchat.check_login()
+        # 连接DB
+        conn = sqlite3.connect('user_info.db')
+        # 如果用户已登陆，则将本用户登录状态设为'1'
         if isLogin:
-            selSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (1, username)
-            conn = sqlite3.connect('user_info.db')
-            conn.execute(selSql)
+            loginSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (1, username)
+            conn.execute(loginSql)
             conn.commit()
-        itchat.run()
+
+        # 如果运行时出现异常则将本用户的登录状态设为'0'
+        try:
+            itchat.run()
+        except Exception as e:
+            logger.exception("PID: %d, USERNAME: %s" % (os.getpid(), username))
+            logoffSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (0, username)
+            conn.execute(logoffSql)
+            conn.commit()
+            os._exit()
+        finally:
+            conn.close()
+
+    # 如果是父进程，则将子进程pid记录下来
     else:
         pid_logger(pid, 'a')
 
