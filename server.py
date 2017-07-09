@@ -8,8 +8,6 @@ import config
 import fuck_recall
 import sqlite3
 
-# import SqliteDB
-
 app = Flask(__name__)
 
 qr_folder = config.qr_folder
@@ -33,41 +31,41 @@ def fuck_recall_login():
     elif request.method == 'POST':
         username = request.form['username']
         qr_dir = qr_folder + username + '.jpg'
-        status_storage_dir = status_storage_folder + username + '.pkl'
+        status_dir = status_storage_folder + username + '.pkl'
 
-        conn = sqlite3.connect('user_info.db')
         isLoginSql = "SELECT isLogin FROM USER WHERE USERNAME = '%s'" % username
-        insUserSql = "INSERT INTO USER VALUES ('%s', %d, %d)" % (username, 0, os.getpid())
-        cursor = conn.execute(isLoginSql)
+        conn = sqlite3.connect('user_info.db')
 
-        count = 0
-        # 如果用户名已经存在
-        if (cursor.fetchone() and os.path.exists(status_storage_dir)):
-            while (count < 200):
-                cursor = conn.execute(isLoginSql)
-                isLogin = cursor.fetchone()
-                time.sleep(0.1)
-                count = count + 1
-                if isLogin:
+        pid = fuck_recall.run(username)
+        if pid == 0:
+            os._exit(0)
+
+        if (os.path.exists(status_dir)):
+            for i in xrange(200):
+                qrExists = os.path.exists(qr_dir)
+                isLogin = conn.execute(isLoginSql).fetchone()[0]
+                if qrExists:
+                    html = render_template('qr.html', qr_name=qr_dir)
                     break
-            conn.close()
-            if count == 200:
-                return "<html>LOGIN!!!!!!!!!!!!!!!!!!</html>"
-            else:
-                return "<html>LOGIN SUCCESSFULLY!!!</html>"
-        # 新用户
-        else:
-            conn.execute(insUserSql)
-            conn.commit()
-            conn.close()
-            pid = fuck_recall.run(username)
-            # 有问题！！！！！！！！！
-            if pid != 0:
-                while (not os.path.exists(qr_dir)):
+                elif isLogin:
+                    html =  "<html>LOGIN SUCCESSFULLY!!!</html>"
+                    break
+                else:
                     time.sleep(0.1)
-                return render_template('qr.html', qr_name=qr_dir)
+            else:
+                html = "<html>LOGIN PLEASE!!!!!!!!!!!!!!!!</html>"
 
+        else:
+            while (not os.path.exists(qr_dir)):
+                time.sleep(0.1)
+            html = render_template('qr.html', qr_name=qr_dir)
 
+        conn.close()
+        return html
+
+def startWebserver():
+    app.run(host='0.0.0.0', port=config.PORT, use_reloader=False)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=config.PORT)
+    startWebserver()
+    # app.run(host='0.0.0.0', port=config.PORT, processes=2)

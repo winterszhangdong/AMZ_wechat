@@ -15,6 +15,7 @@ from itchat.content import *
 import logging.config
 import config
 import sqlite3
+import datetime
 
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
@@ -41,12 +42,13 @@ logger = logging.getLogger('wechatLogger')
 def pid_logger(pid, mode='a'):
     pid = str(pid)
     if os.path.exists(pid_file):
-        logger.info('追加pid：'+pid)
+        logger.info('追加pid：' + pid)
     else:
-        logger.info('pid.txt文件不存在，创建并追加pid：'+pid)
+        logger.info('pid.txt文件不存在，创建并追加pid：' + pid)
 
     with open('./pid.txt', mode) as f:
-        f.write(pid+'\n')
+        f.write(pid + '\n')
+
 
 # 获取下载文件的文件路径
 def getDownloadFilePath(filename):
@@ -184,13 +186,39 @@ def SendRecalledMsg(old_msg):
     logger.debug('msg_send: ---------->' + msg_send)
 
 
+# 登录完成后在数据库中插入一条用户数据
+def loginCallback():
+    # 清除二维码文件
+    qr_dir = qr_folder + identifier + '.jpg'
+    if (os.path.exists(qr_dir)):
+        os.remove(qr_dir)
+        logger.info('清除二维码文件：%s' % qr_dir)
+
+    # insert or update
+    timeNow = str(datetime.datetime.fromtimestamp(time.time()))
+    insUpSql = "INSERT OR REPLACE INTO USER (username, isLogin, pid, lastLogin) VALUES ('%s', 1, %d, '%s')" % (
+        identifier, os.getpid(), timeNow)
+    conn = sqlite3.connect(config.db)
+    conn.execute(insUpSql)
+    conn.commit()
+    conn.close()
+
+
+def exitCallback():
+    timeNow = str(datetime.datetime.fromtimestamp(time.time()))
+    logoffSql = "UPDATE USER SET isLogin = 0, pid = -1, lastLogoff = '%s'WHERE username = '%s'" % (timeNow, identifier)
+    conn = sqlite3.connect(config.db)
+    conn.execute(logoffSql)
+    conn.commit()
+    conn.close()
+
+
 # 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
 # 没有注册note（通知类）消息，通知类消息一般为：红包 转账 消息撤回提醒等，不具有撤回功能
 # 处理朋友消息
 @itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
                      isFriendChat=True)
 def SaveFriendsMsg(msg):
-    # print 'received message!'
     msg_id = msg['MsgId']  # 消息ID
 
     saving_msg = getSavingMsg(msg, 'friendChat')
@@ -205,7 +233,6 @@ def SaveFriendsMsg(msg):
 @itchat.msg_register([TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS],
                      isGroupChat=True)
 def SaveGroupsMsg(msg):
-    # print 'received message!'
     msg_id = msg['MsgId']  # 消息ID
 
     saving_msg = getSavingMsg(msg, 'groupChat')
@@ -219,14 +246,11 @@ def SaveGroupsMsg(msg):
 # 收到note类消息，判断是不是撤回并进行相应操作
 @itchat.msg_register([NOTE], isFriendChat=True, isGroupChat=True)
 def RecalledMsg(msg):
-    # print(msg)
-    # print msg['Text']
     logger.debug(msg['Text'])
     # 创建可下载消息内容的存放文件夹，并将暂存在当前目录的文件移动到该文件中
     if not os.path.exists(download_folder):
         os.mkdir(download_folder)
 
-    # if re.search(r"\<replacemsg\>\<\!\[CDATA\[.*撤回了一条消息\]\]\>\<\/replacemsg\>", msg['Content']) != None:
     if re.search(u'.*撤回了一条消息', msg['Text']) is not None:
         if not re.search(u';msgid&gt;(.*?)&lt;/msgid', msg['Content']):
             old_msg_id = re.search(u'\<msgid\>(.*?)\<\/msgid\>', msg['Content']).group(1)
@@ -245,39 +269,29 @@ def run(username):
     global identifier
 
     identifier = username
+
     # 启动程序，并且设置二维码的保存路径
     qrDir = qr_folder + identifier + '.jpg'
     statusStorageDir = status_storage_folder + identifier + '.pkl'
-    # print 'qrDir ------> ', qrDir
+
     pid = os.fork()
     # 如果是子进程
     if pid == 0:
-        # itchat.auto_login(enableCmdQR=False, picDir=qrDir)
-        itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir)
-        # 用户是否登陆
-        isLogin = itchat.check_login()
-        # 连接DB
-        conn = sqlite3.connect('user_info.db')
-        # 如果用户已登陆，则将本用户登录状态设为'1'
-        if isLogin:
-            loginSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (1, username)
-            conn.execute(loginSql)
-            conn.commit()
-
-        # 如果运行时出现异常则将本用户的登录状态设为'0'
         try:
-            itchat.run()
-        except Exception as e:
-            logger.exception("PID: %d, USERNAME: %s" % (os.getpid(), username))
-            logoffSql = "UPDATE USER SET isLogin = %d WHERE username = '%s'" % (0, username)
-            conn.execute(logoffSql)
-            conn.commit()
-            os._exit()
-        finally:
-            conn.close()
+            # 第二次fork避免僵尸进程
+            childPid = os.fork()
+            if childPid > 0:
+                os._exit(0)
 
-    # 如果是父进程，则将子进程pid记录下来
+            itchat.auto_login(hotReload=True, statusStorageDir=statusStorageDir, enableCmdQR=True, picDir=qrDir,
+                              loginCallback=loginCallback, exitCallback=exitCallback)
+            itchat.run()
+
+        except Exception as e:
+            logger.exception('username: %s, pid %d' % (username, os.getpid()))
+            exitCallback()
     else:
+        # 如果是父进程，则将子进程pid记录下来
         pid_logger(pid, 'a')
 
     return pid
