@@ -1,6 +1,10 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
 from flask import render_template, Flask, request
 import os
 import time
@@ -24,7 +28,7 @@ fuck_recall.pid_logger(os.getpid(), 'a')
 #     if auth_code == md5_code:
 #         return render_template('chat_file.html', file_name=filename)
 
-@app.route('/fuck_recall_login.html', methods=['GET', 'POST'])
+@app.route('/wechat.html', methods=['GET', 'POST'])
 def fuck_recall_login():
     if request.method == 'GET':
         return render_template('signin.html')
@@ -40,15 +44,15 @@ def fuck_recall_login():
         if pid == 0:
             os._exit(0)
 
-        if (os.path.exists(status_dir)):
+        if os.path.exists(status_dir):
             for i in xrange(200):
                 qrExists = os.path.exists(qr_dir)
                 isLogin = conn.execute(isLoginSql).fetchone()[0]
                 if qrExists:
                     html = render_template('qr.html', qr_name=qr_dir)
                     break
-                elif isLogin:
-                    html =  "<html>LOGIN SUCCESSFULLY!!!</html>"
+                elif isLogin == 1:
+                    html = "<html>LOGIN SUCCESSFULLY!!!</html>"
                     break
                 else:
                     time.sleep(0.1)
@@ -56,16 +60,24 @@ def fuck_recall_login():
                 html = "<html>LOGIN PLEASE!!!!!!!!!!!!!!!!</html>"
 
         else:
-            while (not os.path.exists(qr_dir)):
+            while not os.path.exists(qr_dir):
                 time.sleep(0.1)
             html = render_template('qr.html', qr_name=qr_dir)
 
         conn.close()
         return html
 
-def startWebserver():
-    app.run(host='0.0.0.0', port=config.PORT, use_reloader=False)
+
+def _start_webserver():
+    app.run(host='0.0.0.0', port=config.PORT)
+
+
+def _new_pid_file():
+    with open('./pid.txt', 'w') as f:
+        f.write('')
+
 
 if __name__ == '__main__':
-    startWebserver()
+    _new_pid_file()
+    _start_webserver()
     # app.run(host='0.0.0.0', port=config.PORT, processes=2)
