@@ -3,12 +3,16 @@
 
 
 class SavedMsg(object):
+    '''
+    缓存在本地的消息类
+    '''
+
     def __init__(self):
-        self.create_time = None
+        self.create_time = None  # 展示给用户的，接收消息时的本地时间 2017/03/03 13:23:53
         self.time = None
-        self.type = None
-        self.content = None
-        self.link = None
+        self.type = None  # 消息类型
+        self.content = None  # 根据消息类型不同，消息内容不同
+        self.link = None  # 分享类消息url
         self.from_user = None
         self.group_name = None
 

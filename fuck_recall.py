@@ -16,6 +16,7 @@ import logging.config
 import config
 import sqlite3
 import datetime
+import SavedMsg
 
 # NORMAL_MSG = [TEXT, PICTURE, MAP, CARD, SHARING, RECORDING, ATTACHMENT, VIDEO, FRIENDS]
 # {msg_id:(msg_from,msg_to,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
@@ -55,7 +56,6 @@ def pid_logger(pid, mode='a'):
 def get_download_path(filename):
     global identifier
 
-    # return '{dfolder}{id}_{filename}'.format(dfolder=download_folder, id=identifier, filename=filename)
     return download_folder + identifier + '_' + filename
 
 
@@ -82,107 +82,65 @@ def _clear_timeout_msg():
 
 
 # 从接受的信息中获取必要的字段，处理后返回信息字典
-def _get_saving_msg(msg, chat_type):
-    # 展示给用户的，接收消息时的本地时间 2017/03/03 13:23:53
-    msg_time_touser = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    msg_time = msg['CreateTime']  # 消息时间
+def _get_saved_msg(msg, chat_type):
+    saved_msg = SavedMsg.SavedMsg()
 
-    msg_type = msg['Type']  # 消息类型
-    msg_content = None  # 根据消息类型不同，消息内容不同
-    msg_url = None  # 分享类消息有url
-    # 图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
-    if msg['Type'] == 'Text':
-        msg_content = msg['Text']
-    elif msg['Type'] == 'Picture':
-        msg_content = msg['FileName']
-        msg['Text'](get_download_path(msg['FileName']))
-    elif msg['Type'] == 'Card':
-        msg_content = msg['RecommendInfo']['NickName'].encode('ascii', 'ignore') + ' 的名片'
-    elif msg['Type'] == 'Map':
+    # 展示给用户的，接收消息时的本地时间 2017/03/03 13:23:53
+    saved_msg.time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    saved_msg.create_time = msg['CreateTime']  # 消息时间
+
+    saved_msg.type = msg['Type']  # 消息类型
+    if saved_msg.type in ('Text', 'Friends'):
+        saved_msg.content = msg['Text']
+    elif saved_msg.type == 'Card':
+        saved_msg.content = msg['RecommendInfo']['NickName'] + ' 的名片'
+    elif saved_msg.type == 'Map':
         x, y, location = re.search("<location x=\"(.*?)\" y=\"(.*?)\".*label=\"(.*?)\".*",
                                    msg['OriContent'].encode('ascii', 'ignore')).group(1, 2, 3)
-        msg_content = location if location else ''.join(['纬度->', x, ' ', '经度->', y])
-    elif msg['Type'] == 'Sharing':
-        msg_content = msg['Text']
-        msg_url = msg['Url']
-    elif msg['Type'] == 'Recording':
-        msg_content = msg['FileName']
+        saved_msg.content = location if location else ''.join(['纬度->', x, ' ', '经度->', y])
+    elif saved_msg.has_file():
+        # 图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
+        saved_msg.content = msg['Filename']
         msg['Text'](get_download_path(msg['FileName']))
-    elif msg['Type'] == 'Attachment':
-        msg_content = '' + msg['FileName']
-        msg['Text'](get_download_path('' + msg['Filename']))
-    elif msg['Type'] == 'Video':
-        msg_content = msg['FileName']
-        msg['Text'](get_download_path(msg['Filename']))
-    elif msg['Type'] == 'Friends':
-        msg_content = msg['Text']
+    elif saved_msg.is_sharing():
+        saved_msg.content = msg['Text']
+        saved_msg.link = msg['Url']
 
-    # 缓存在本地的消息
-    saving_msg = {
-        "msg_time": msg_time,
-        "msg_time_touser": msg_time_touser,
-        "msg_type": msg_type,
-        "msg_content": msg_content,
-        "msg_url": msg_url
-    }
     # 根据是否是群聊消息，消息发送人昵称的获取方式有所不同
     if chat_type == 'friendChat':
         friend_name = msg['FromUserName']
-        msg_from = itchat.search_friends(userName=friend_name)['NickName']  # 消息发送人昵称
-        saving_msg["msg_from"] = msg_from
+        saved_msg.from_user = itchat.search_friends(userName=friend_name)['NickName']  # 消息发送人昵称
     elif chat_type == 'groupChat':
-        # friendUserName = msg['ActualUserName']
-        # msg_from = itchat.search_friends(userName=friendUserName)['NickName']  # 消息发送人昵称
-        msg_from = msg.get('ActualNickName', u'Winters先生').encode('ascii', 'ignore')
+        msg_from = msg.get('ActualNickName', u'Winters先生').encode('ascii', 'ignore')  # 消息发送人昵称
         group_name = msg['FromUserName']
         msg_group = itchat.search_chatrooms(userName=group_name).get('NickName', u'未保存到通讯录的群').encode('ascii', 'ignore')
-        saving_msg["msg_group"] = msg_group
-        saving_msg["msg_from"] = msg_from
+        saved_msg.group_name = msg_group
+        saved_msg.from_user = msg_from
     else:
         raise Exception('传入的参数msgFrom不符合要求!')
 
-    return saving_msg
+    return saved_msg
 
 
 # 将已撤回的消息发给文件传输助手
-def _send_recalled_msg(old_msg):
-    # print(old_msg_id, old_msg)
+def _send_recalled_msg(saved_msg):
     global identifier
 
-    # 如果是群消息
-    if not old_msg:
+    if not saved_msg:
         logger.error('撤回的消息不在本地暂存的消息列表中!')
-    elif old_msg.get('msg_group'):
-        group_name = '#' + old_msg['msg_group'] + '  '
-    else:
-        group_name = ''
+        return
 
-    msg_send = ('新的撤回消息!\n' +
-                '撤回人：' + group_name + old_msg.get('msg_from', '') + '\n' +
-                '撤回时间：' + old_msg.get('msg_time_touser', '') + '\n' +
-                '消息类型：' + old_msg.get('msg_type', '') + '\n' +
-                '消息内容：' + old_msg.get('msg_content', ''))
+    send_text = saved_msg.get_send_text()
 
-    # 撤回消息是分享链接
-    if old_msg['msg_type'] == "Sharing":
-        msg_send += '\n链接：' + old_msg.get('msg_url', '')
-        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
+    itchat.send(send_text, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
     # 撤回消息是可保存的文件类型
-    elif old_msg['msg_type'] in ['Recording', 'Video', 'Attachment', 'Picture']:
-        msg_send += '\n撤回文件如下⬇️'
-        file_name = old_msg['msg_content']
+    if saved_msg.has_file():
+        file_name = saved_msg.content
         shutil.move(get_download_path(file_name), recalled_file_folder)
-        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
-        msg_file = type_dict[old_msg['msg_type']] + '@recalled_file/' + identifier + '_' + file_name
+        msg_file = type_dict[saved_msg.type] + '@recalled_file/' + identifier + '_' + file_name
         itchat.send(msg=msg_file, toUserName='filehelper')
-        # file_url = getSavedFileUrl(old_msg['msg_content'])
-        # msg_send += '\n文件地址：' + file_url
-    # 撤回消息是普通文本消息
-    else:
-        itchat.send(msg_send, toUserName='filehelper')  # 将撤回消息的通知以及细节发送到文件助手
 
-    # print 'msg_send: ---------->', msg_send
-    logger.debug('msg_send: ---------->' + msg_send)
+    logger.debug('msg_send: ---------->' + send_text)
 
 
 # 登录完成后在数据库中插入一条用户数据
@@ -218,14 +176,14 @@ def _exit_callback():
 
 
 # 判断当前用户是否已经登陆
-def _is_login():
+def is_login():
     is_login_sql = "SELECT isLogin FROM USER WHERE USERNAME = '%s'" % identifier
     conn = sqlite3.connect(config.db)
     cursor = conn.execute(is_login_sql)
-    is_login = cursor.fetchone()[0]
+    result = cursor.fetchone()[0]
     conn.close()
 
-    return True if is_login == 1 else False
+    return True if result == 1 else False
 
 
 # 将接收到的消息存放在字典中，当接收到新消息时对字典中超时的消息进行清理
@@ -236,10 +194,10 @@ def _is_login():
 def save_friends_msg(msg):
     msg_id = msg['MsgId']  # 消息ID
 
-    saving_msg = _get_saving_msg(msg, 'friendChat')
+    saved_msg = _get_saved_msg(msg, 'friendChat')
     # 更新字典
     # {msg_id:(msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
-    msg_dict.update({msg_id: saving_msg})
+    msg_dict.update({msg_id: saved_msg})
     # 清理缓存消息列表
     _clear_timeout_msg()
 
@@ -250,7 +208,7 @@ def save_friends_msg(msg):
 def save_groups_msg(msg):
     msg_id = msg['MsgId']  # 消息ID
 
-    saving_msg = _get_saving_msg(msg, 'groupChat')
+    saving_msg = _get_saved_msg(msg, 'groupChat')
     # 更新字典
     # {msg_id:(msg_group,msg_from,msg_time,msg_time_touser,msg_type,msg_content,msg_url)}
     msg_dict.update({msg_id: saving_msg})
@@ -273,9 +231,9 @@ def recalled_msg(msg):
             old_msg_id = re.search(u';msgid&gt;(.*?)&lt;/msgid', msg['Content']).group(1)
 
         # 从暂存的消息列表中获取撤回的消息
-        old_msg = msg_dict.get(old_msg_id)
+        saved_msg = msg_dict.get(old_msg_id)
         # 将撤回的消息发给自己
-        _send_recalled_msg(old_msg)
+        _send_recalled_msg(saved_msg)
         msg_dict.pop(old_msg_id)
         _clear_timeout_msg()
 
@@ -285,7 +243,7 @@ def run(username):
 
     identifier = username
 
-    if _is_login():
+    if is_login():
         return 1
 
     # 启动程序，并且设置二维码的保存路径
@@ -307,7 +265,7 @@ def run(username):
                               loginCallback=_login_callback, exitCallback=_exit_callback)
             itchat.run()
 
-        except Exception as e:
+        except Exception:
             logger.exception('username: %s, pid %d' % (username, os.getpid()))
             _exit_callback()
     else:
