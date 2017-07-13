@@ -39,6 +39,7 @@ logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('wechatLogger')
 
 
+
 # 记录正在运行进程的pid
 def pid_logger(pid, mode='a'):
     info_text = ('追加pid：%d' % pid) if os.path.exists(pid_file) else ('pid.txt文件不存在，创建并追加pid：%d' % pid)
