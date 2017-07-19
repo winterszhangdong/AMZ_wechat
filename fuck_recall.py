@@ -101,7 +101,7 @@ def _get_saved_msg(msg, chat_type):
         saved_msg.content = location if location else ''.join(['纬度->', x, ' ', '经度->', y])
     elif saved_msg.has_file():
         # 图片 语音 附件 视频，可下载消息将内容下载暂存到当前目录
-        saved_msg.content = msg['Filename']
+        saved_msg.content = msg['FileName']
         msg['Text'](get_download_path(msg['FileName']))
     elif saved_msg.is_sharing():
         saved_msg.content = msg['Text']
