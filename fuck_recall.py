@@ -43,10 +43,6 @@ logger = logging.getLogger('wechatLogger')
 # 记录正在运行进程的pid
 def pid_logger(pid, mode='a'):
     info_text = ('追加pid：%d' % pid) if os.path.exists(pid_file) else ('pid.txt文件不存在，创建并追加pid：%d' % pid)
-    # if os.path.exists(pid_file):
-    #     logger.info('追加pid：' + pid)
-    # else:
-    #     logger.info('pid.txt文件不存在，创建并追加pid：' + pid)
     logger.info(info_text)
 
     with open('./pid.txt', mode) as f:
@@ -112,9 +108,9 @@ def _get_saved_msg(msg, chat_type):
         friend_name = msg['FromUserName']
         saved_msg.from_user = itchat.search_friends(userName=friend_name)['NickName']  # 消息发送人昵称
     elif chat_type == 'groupChat':
-        msg_from = msg.get('ActualNickName', u'Winters先生').encode('ascii', 'ignore')  # 消息发送人昵称
+        msg_from = msg.get('ActualNickName', u'Winters先生')  # 消息发送人昵称
         group_name = msg['FromUserName']
-        msg_group = itchat.search_chatrooms(userName=group_name).get('NickName', u'未保存到通讯录的群').encode('ascii', 'ignore')
+        msg_group = itchat.search_chatrooms(userName=group_name).get('NickName', u'未保存到通讯录的群') #群名
         saved_msg.group_name = msg_group
         saved_msg.from_user = msg_from
     else:
